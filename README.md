@@ -14,3 +14,27 @@ CommServer 是一个基于 Rust 语言的后端服务器，提供功能如下：
   - lib-json: 一个 json 解析库，支持将字符串解析为 json 对象。
   - lib-log: 一个日志库，支持将日志输出到控制台、文件等。
   - lib-sql：一个 sql 关系映射库，支持将默认常见的数据库增删查改，同时封装了返回对象。
+
+
+## 构建
+
+编译命令
+
+```
+cargo build --release --target x86_64-unknown-linux-musl
+```
+
+在 `target/x86_64-unknown-linux-musl/release` 下找到生成可执行文件。
+
+将可执行文件 copy 到 docker 路径下，然后构建 docker 镜像
+
+```
+cd docker
+docker build -t billreco-server .
+```
+
+将根路径下 `conf/config.toml` 复制到 `docker/conf` 下，运行镜像
+
+```
+docker compose up -d
+```
