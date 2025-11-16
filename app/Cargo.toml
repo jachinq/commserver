@@ -10,3 +10,11 @@ lib-log = { workspace=true }
 lib-sql = { workspace=true }
 serde_json = { workspace=true }
 serde = { workspace=true }
+
+actix-web = "4.0"
+tokio = { version = "1", features = ["full"] }
+actix-files = "0.6"
+actix-cors = "0.7.0"
+env_logger = "0.11.6"
+md5 = "0.7"
+jsonwebtoken = "9.3.1"

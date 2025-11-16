@@ -1,151 +1,113 @@
-use lib_json::object::JsonObject;
-use lib_sql::{
-    sources::Dao,
-    traits::{CommInterface, Error, Table},
-    utils::{Matcher, Operator, Search},
-};
+use std::io;
+
+use actix_cors::Cors;
+use actix_web::{App, HttpResponse, HttpServer, Responder, middleware::Logger, web};
+use env_logger::Env;
+use lib_log::log;
+
+mod controller;
+mod model;
+mod utils;
+
+use controller::auth::*;
+use lib_sql::utils::read_config;
+use model::*;
 use serde::{Deserialize, Serialize};
 
-// 定义 User 结构体
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct User {
-    pub id: i32,
-    pub username: String,
-    pub password: String,
-    pub email: String,
-    pub created_at: i32,
-}
+use crate::utils::table;
 
-impl Table for User {
-    fn id() -> &'static str {
-        "id"
-    }
+// 应用状态
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
+struct AppState {}
 
-    fn id_auto_increase() -> bool {
-        true
+#[actix_web::main]
+async fn main() -> io::Result<()> {
+    // 初始化日志记录
+    unsafe {
+        std::env::set_var("RUST_LOG", "debug");
     }
+    env_logger::init_from_env(Env::default().default_filter_or("info"));
 
-    fn columns() -> Vec<&'static str> {
-        vec!["id", "username", "password", "email", "created_at"]
-    }
+    // 初始化数据库
+    if let Err(e) = table::init() {
+        log::log_err(&format!("init database error: {:?}", e));
+        return Err(io::Error::new(io::ErrorKind::Other, "init database error"));
+    };
 
-    fn id_value(&self) -> String {
-        self.id.to_string()
-    }
-
-    fn table_name() -> &'static str {
-        "user"
-    }
-
-    fn from_json_object(row: &JsonObject) -> Result<Self, Error> {
-        let mut entity = Self::default();
-        match row.get_i32("id") {
-            Some(v) => entity.id = v,
-            None => return Err(Error::ParseError),
-        }
-        match row.get_str("username") {
-            Some(v) => entity.username = v.to_string(),
-            None => return Err(Error::ParseError),
-        }
-        match row.get_str("password") {
-            Some(v) => entity.password = v.to_string(),
-            None => return Err(Error::ParseError),
-        }
-        match row.get_str("email") {
-            Some(v) => entity.email = v.to_string(),
-            None => return Err(Error::ParseError),
-        }
-        match row.get_i32("created_at") {
-            Some(v) => entity.created_at = v,
-            None => return Err(Error::ParseError),
-        }
-        Ok(entity)
-    }
-
-    fn to_json_object(&self) -> Result<JsonObject, Error> {
-        let mut obj = JsonObject::new();
-        obj.set_i32("id", self.id);
-        obj.set_str("username", &self.username);
-        obj.set_str("password", &self.password);
-        obj.set_str("email", &self.email);
-        obj.set_i32("created_at", self.created_at);
-        Ok(obj)
-    }
     
+    let config = read_config("./conf/config.toml");
+    if let Err(e) = config {
+        log::log_err(&format!("read config error: {:?}", e));
+        return Err(io::Error::new(io::ErrorKind::Other, "read config error"));
+    }
+    let config = config.unwrap();
+
+    // 静态文件目录
+    let web_dir = config.webdir.unwrap_or("./web".to_string());
+    let port = config.port.unwrap_or(3000);
+
+    // 启动定时任务
+    // job::account::start();
+
+    let ip = "0.0.0.0";
+    log::log_info(&format!("Server started on http://{}:{}", ip, port));
+    // 启动 HTTP 服务
+    HttpServer::new(move || {
+        App::new()
+            .wrap(
+                Cors::default() // 添加 CORS 中间件
+                    .allow_any_origin() // 允许所有来源的跨域请求，你可以根据需要更改为特定的域名
+                    .allow_any_method() // 允许所有方法，如 GET, POST, PUT, DELETE 等
+                    .allow_any_header(), // 允许所有请求头，你可以根据需要更改为特定的请求头
+            )
+            // 认证相关路由
+            .route("/api/auth/me", web::get().to(handle_me))
+            .route("/api/auth/login", web::post().to(handle_login))
+            .route("/api/auth/register", web::post().to(handle_register))
+            .route("/api/auth/logout", web::post().to(handle_logout))
+            .route("/api/auth/refresh", web::post().to(handle_refresh))
+            .route("/api/auth/verify", web::post().to(handle_verify))
+            .route("/api/auth/password", web::put().to(handle_change_password))
+            .route(
+                "/api/auth/reset-password",
+                web::post().to(handle_reset_password),
+            )
+            // 心跳路由
+            .route("/api/ping", web::route().to(handle_ping))
+            .wrap(Logger::default()) // 日志记录中间件
+            .app_data(web::JsonConfig::default().error_handler(handle_server_error)) //
+            .app_data(web::Data::new(AppState {}))
+            .service(actix_files::Files::new("/", &web_dir).index_file("index.html"))
+            .default_service(web::get().to(handle_all_others))
+    })
+    .bind(&format!("{}:{}", ip, port))?
+    .run()
+    .await
 }
 
-fn main() {
-    let dao = Dao::new();
-    if let Err(e) = dao {
-        println!("{:?}", e);
-        return;
-    }
-    let dao = dao.unwrap();
+// 心跳
+async fn handle_ping() -> HttpResponse {
+    HttpResponse::Ok().json("pong")
+}
 
-    // 创建表
-    let sql = "CREATE TABLE IF NOT EXISTS user ( id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, password TEXT NOT NULL, email TEXT NOT NULL, created_at INTEGER NOT NULL );";
-    if let Err(e) = dao.create_table(sql) {
-        println!("create table error；{:?}", e);
-        return;
-    } else {
-        println!("create table ok");
-    }
+// 处理所有其他请求，重定向到 index.html
+// async fn handle_all_others(_app_data: web::Data<AppState>) -> Result<NamedFile, actix_web::Error> {
+//     let web_path = "";
+//     let index_path = format!("{}/index.html", web_path);
+//     let path = Path::new(&index_path);
+//     NamedFile::open(path).map_err(|_| actix_web::error::ErrorNotFound("index.html not found"))
+// }
+// 处理所有其他请求，返回错误信息
+async fn handle_all_others(_app_data: web::Data<AppState>) -> impl Responder {
+    HttpResponse::BadRequest().json(JsonResult::<()>::error("not found`"))
+}
 
-    if let Ok(list) = dao.list_all::<User>() {
-        println!("list size={}", list.len());
-        for ele in list {
-            println!("{:?}, id={} username={}", ele, ele.id, ele.username);
-        }
-    };
+fn handle_server_error(
+    err: actix_web::error::JsonPayloadError,
+    _req: &actix_web::HttpRequest,
+) -> actix_web::Error {
+    let err2 = JsonResult::<()>::error(&err.to_string());
+    let err2 = serde_json::to_string(&err2).unwrap_or_default();
 
-    let p = User {
-        id: 1,
-        username: "从app修改".to_string(),
-        password: "password".to_string(),
-        email: "email".to_string(),
-        created_at: 1615299200,
-    };
-    match dao.set(p) {
-        Ok(cnt) => println!("set ok, cnt={}", cnt),
-        Err(e) => println!("set err: {:?}", e),
-    }
-    let mut p = User::default();
-    p.id = 1;
-    match dao.delete(p) {
-        Ok(cnt) => println!("del ok, cnt={}", cnt),
-        Err(e) => println!("del err: {:?}", e),
-    }
-    let p = User {
-        id: 1,
-        username: "从app新增".to_string(),
-        password: "password".to_string(),
-        email: "email".to_string(),
-        created_at: 1615299200,
-    };
-    match dao.add(p) {
-        Ok(cnt) => println!("add ok, cnt={}", cnt),
-        Err(e) => println!("add err: {:?}", e),
-    }
-
-    let mut matcher_or1 = Matcher::new();
-    matcher_or1.or("id", Operator::Eq, 1);
-    let mut matcher_or2 = Matcher::new();
-    matcher_or2.or("id", Operator::Eq, 2);
-    let mut matcher_and = Matcher::new();
-    matcher_and.and("username", Operator::Like, "app");
-
-    let mut search = Search::default();
-    search.matcher.and("id", Operator::In, "1,2,3,4");
-    search.matcher.and_matcher(matcher_and);
-    search.matcher.or_matcher(matcher_or1);
-    search.matcher.or_matcher(matcher_or2);
-    search.sort.add("id", true);
-    search.sort.add("username", false);
-    search.start = 0;
-    search.limit = 1;
-    match dao.list::<User>(&mut search) {
-        Ok(list) => println!("list={:?}", list),
-        Err(e) => println!("e={:?}", e),
-    }
-    println!("total = {}", search.total);
+    actix_web::error::ErrorInternalServerError(err2)
 }

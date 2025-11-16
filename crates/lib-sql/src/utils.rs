@@ -7,6 +7,9 @@ use std::fs;
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub datasource: String,
+    pub webdir: Option<String>,
+    pub port: Option<u16>,
+
 }
 
 /// 读取指定路径的配置文件，配置文件使用 toml 进行解析
