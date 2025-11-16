@@ -1,0 +1,12 @@
+[package]
+name = "app"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+lib-date = { workspace=true }
+lib-json = { workspace=true }
+lib-log = { workspace=true }
+lib-sql = { workspace=true }
+serde_json = { workspace=true }
+serde = { workspace=true }

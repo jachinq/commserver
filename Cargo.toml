@@ -1,0 +1,14 @@
+[workspace]
+resolver = "3"
+
+members = [ "crates/lib-sql", "crates/lib-json" , "app"]
+
+[workspace.dependencies]
+lib-date = { path = "crates/lib-date" }
+lib-json = { path = "crates/lib-json" }
+lib-log = { path = "crates/lib-log" }
+lib-sql = { path = "crates/lib-sql" }
+
+chrono = "0.4.39"
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }

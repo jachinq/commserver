@@ -1,0 +1,2 @@
+# 配置数据库连接
+datasource="./data/data.db"

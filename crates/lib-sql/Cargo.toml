@@ -1,0 +1,17 @@
+[package]
+name = "lib-sql"
+version = "0.1.0"
+edition = "2024"
+description = "一个用于数据库操作的 orm 库。支持 sqlite 和 mysql"
+license = "MIT"
+
+[dependencies]
+serde = { version = "1.0.219", features = ["derive"] }
+serde_derive = "1.0.219"
+#serde_json = "1.0.143"
+
+# https://crates.io/crates/sqlite
+sqlite = { version="0.37.0", features = ["bundled"] }
+toml = "0.9.5"
+
+lib-json = { workspace = true }
